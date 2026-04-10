@@ -1,0 +1,127 @@
+.gs-wrap {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 4rem 2rem 5rem;
+}
+
+.gs-header {
+  text-align: center;
+  margin-bottom: 3rem;
+}
+
+.gs-back {
+  font-size: .82rem;
+  color: #aaa;
+  cursor: pointer;
+  margin-bottom: 1.5rem;
+  display: inline-block;
+  font-family: var(--mono);
+  transition: color .15s;
+}
+.gs-back:hover { color: var(--red); }
+
+.gs-title {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -.03em;
+  color: #111;
+  margin-bottom: .65rem;
+  line-height: 1.2;
+}
+
+.gs-sub {
+  font-size: .9rem;
+  color: #888;
+  line-height: 1.7;
+}
+
+.gs-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.25rem;
+}
+
+.gs-card {
+  border: 1.5px solid #f0f0f0;
+  border-radius: 14px;
+  padding: 2rem 1.5rem;
+  cursor: pointer;
+  transition: border-color .2s, transform .15s;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  background: #fff;
+}
+
+.gs-card:hover {
+  border-color: var(--red-border);
+  transform: translateY(-2px);
+}
+
+.gs-card-icon {
+  font-size: 2.25rem;
+  margin-bottom: .5rem;
+}
+
+.gs-card-title {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #111;
+  letter-spacing: -.02em;
+}
+
+.gs-card-subtitle {
+  font-size: .75rem;
+  color: #aaa;
+  font-family: var(--mono);
+  margin-bottom: .25rem;
+}
+
+.gs-card-desc {
+  font-size: .825rem;
+  color: #666;
+  line-height: 1.65;
+  flex: 1;
+}
+
+.gs-examples {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+  margin-top: .25rem;
+}
+
+.gs-examples li {
+  font-size: .775rem;
+  color: #999;
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+}
+
+.gs-examples li::before {
+  content: '→';
+  color: #FECACA;
+  font-family: var(--mono);
+  font-size: .7rem;
+  flex-shrink: 0;
+}
+
+.gs-card-cta {
+  margin-top: .75rem;
+  font-size: .82rem;
+  font-weight: 700;
+  color: #C0392B;
+  font-family: var(--mono);
+}
+
+.gs-card:hover .gs-card-cta::after {
+  content: ' →';
+}
+
+@media (max-width: 768px) {
+  .gs-wrap { padding: 2.5rem 1.25rem; }
+  .gs-cards { grid-template-columns: 1fr; }
+  .gs-title { font-size: 1.5rem; }
+}
