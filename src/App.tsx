@@ -6,6 +6,7 @@ import ImageTrain from "./pages/ImageTrain";
 import AudioCollect from "./pages/AudioCollect";
 import AudioPreprocess from "./pages/AudioPreprocess";
 import AudioTrain from "./pages/AudioTrain";
+import ImageDeploy from "./pages/ImageDeploy";
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
       <Route path="/get-started/audio" element={<AudioCollect />} />
       <Route path="/get-started/audio/preprocess" element={<AudioPreprocess />} />
       <Route path="/get-started/audio/train" element={<AudioTrain />} />
+      <Route path="/get-started/image/deploy" element={<ImageDeploy />} />
     </Routes>
   );
 }
