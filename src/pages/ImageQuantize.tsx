@@ -10,11 +10,13 @@ import {
   quantizeINT8,
   compressLayers,
   measureAccuracy,
+  predictBoth,
   type Precision,
   type QuantizedModel,
   type LayerCompression,
-  type AccuracyMeasurement,
+  type AccuracyMeasurementDetailed,
   type AccuracySample,
+  type SamplePrediction,
 } from "../quantization";
 
 // ── Storage keys (must match the ones written by ImageTrain) ──
@@ -45,7 +47,7 @@ interface QuantSlot {
   loading: boolean;
   error: string | null;
   model: QuantizedModel | null;
-  accuracy: AccuracyMeasurement | null;
+  accuracy: AccuracyMeasurementDetailed | null;
 }
 
 export default function ImageQuantize() {
@@ -65,6 +67,29 @@ export default function ImageQuantize() {
 
   // User's selection — defaults to int8 since it's the interesting choice
   const [selected, setSelected] = useState<Precision>("int8");
+
+  // ── Upload comparison state ──
+  // Each entry: thumbnail data URL + the two model predictions for it
+  interface UploadedComparison {
+    id: string;
+    thumbnail: string;          // data URL of the uploaded image
+    fp32ClassIndex: number;
+    fp32Probabilities: number[];
+    quantClassIndex: number;
+    quantProbabilities: number[];
+  }
+  const [uploads, setUploads] = useState<UploadedComparison[]>([]);
+  const [uploadProcessing, setUploadProcessing] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dragActive, setDragActive] = useState(false);
+
+  // Which sample row is expanded (training samples comparison)
+  const [expandedSample, setExpandedSample] = useState<number | null>(null);
+  // Which uploaded row is expanded
+  const [expandedUpload, setExpandedUpload] = useState<string | null>(null);
+
+  const MAX_UPLOADS = 10;
 
   // The original FP32 sample-to-tensor preprocessor — depends on whether the
   // user trained transfer learning or small CNN. Built lazily.
@@ -165,7 +190,7 @@ export default function ImageQuantize() {
       const quantized = await quantizeINT8(origModel);
 
       // Measure accuracy on the user's training samples (if available)
-      let accMeasure: AccuracyMeasurement | null = null;
+      let accMeasure: AccuracyMeasurementDetailed | null = null;
       if (meta.samples && meta.samples.length > 0 && fp32Slot.model) {
         const samples = await buildAccuracySamples(meta);
         accMeasure = await measureAccuracy(fp32Slot.model, quantized, samples, "int8");
@@ -191,6 +216,111 @@ export default function ImageQuantize() {
   }, [origModel, meta]);
 
   // ── Continue button ──
+  // ── Preprocess a single uploaded image into the right input tensor ──
+  const preprocessUpload = async (dataUrl: string): Promise<tf.Tensor> => {
+    if (!meta) throw new Error("No metadata");
+    const img = await loadImg(dataUrl);
+
+    if (meta.trainMode === "transfer") {
+      // Need MobileNet for embeddings
+      if (!mnetRef.current) {
+        const version = meta.transferModel === "mobilenet-v2" ? 2 : 1;
+        mnetRef.current = await mobilenet.load({ version, alpha: 1.0 });
+      }
+      const mnet = mnetRef.current;
+      const canvas = document.createElement("canvas");
+      canvas.width = 224; canvas.height = 224;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, 224, 224);
+      return tf.tidy(() => {
+        const px = tf.browser.fromPixels(canvas);
+        return (mnet.infer(px, true) as tf.Tensor).squeeze() as tf.Tensor1D;
+      });
+    } else {
+      const size = meta.cnnInputSize ?? 96;
+      const canvas = document.createElement("canvas");
+      canvas.width = size; canvas.height = size;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, size, size);
+      return tf.tidy(() => {
+        const px = tf.browser.fromPixels(canvas);
+        const gray = px.mean(2, true) as tf.Tensor3D;
+        return gray.div(tf.scalar(255)) as tf.Tensor3D;
+      });
+    }
+  };
+
+  // ── Handle a file (from drop or file input) ──
+  const handleFile = async (file: File) => {
+    if (uploads.length >= MAX_UPLOADS) {
+      setUploadError(`Maximum ${MAX_UPLOADS} uploads. Remove one to add more.`);
+      return;
+    }
+    if (!file.type.startsWith("image/")) {
+      setUploadError("That doesn't look like an image file.");
+      return;
+    }
+    if (!fp32Slot.model || !int8Slot.model) {
+      setUploadError("Models still loading — try again in a moment.");
+      return;
+    }
+
+    setUploadError(null);
+    setUploadProcessing(true);
+
+    try {
+      // Read file as data URL for the thumbnail
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error("Couldn't read file"));
+        reader.readAsDataURL(file);
+      });
+
+      // Preprocess and run both models
+      const input = await preprocessUpload(dataUrl);
+      const result = await predictBoth(fp32Slot.model, int8Slot.model, input);
+      input.dispose();
+
+      const newEntry: UploadedComparison = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        thumbnail: dataUrl,
+        ...result,
+      };
+      setUploads(u => [newEntry, ...u]);
+    } catch (err) {
+      console.error("Upload processing failed:", err);
+      setUploadError("Couldn't process that image — see console.");
+    } finally {
+      setUploadProcessing(false);
+    }
+  };
+
+  const handleFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    for (const f of files) {
+      if (uploads.length >= MAX_UPLOADS) break;
+      await handleFile(f);
+    }
+    // Reset input so the same file can be re-selected
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragActive(false);
+    const files = Array.from(e.dataTransfer.files);
+    for (const f of files) {
+      if (uploads.length >= MAX_UPLOADS) break;
+      await handleFile(f);
+    }
+  };
+
+  const removeUpload = (id: string) => {
+    setUploads(u => u.filter(x => x.id !== id));
+    if (expandedUpload === id) setExpandedUpload(null);
+  };
+
   const handleContinue = () => {
     navigate("/get-started/image/deploy", {
       state: { precision: selected }
@@ -428,6 +558,224 @@ export default function ImageQuantize() {
             </tbody>
           </table>
         </div>
+
+        {/* ── Compare predictions: training samples ── */}
+        {int8Slot.accuracy && int8Slot.accuracy.perSample.length > 0 && meta.samples && (
+          <>
+            <div className="qz-section-label">Compare predictions</div>
+            <div className="qz-compare-card">
+              <div className="qz-compare-head">
+                <div className="qz-compare-title">Tested on your training samples</div>
+                <div className="qz-compare-sub">
+                  Each saved sample run through both models. Click a row to see all class probabilities.
+                </div>
+              </div>
+              <div className="qz-compare-summary">
+                {(() => {
+                  const agree = int8Slot.accuracy.perSample.filter(s => s.fp32ClassIndex === s.quantClassIndex).length;
+                  const total = int8Slot.accuracy.perSample.length;
+                  const allAgree = agree === total;
+                  return (
+                    <span className={allAgree ? "qz-summary-good" : "qz-summary-mixed"}>
+                      {agree}/{total} agreements{!allAgree && `, ${total - agree} disagreement${total - agree > 1 ? "s" : ""}`}
+                    </span>
+                  );
+                })()}
+              </div>
+              <div className="qz-sample-list">
+                {int8Slot.accuracy.perSample.map((sp, idx) => {
+                  const sample = meta.samples?.[sp.sampleIndex];
+                  if (!sample) return null;
+                  const expanded = expandedSample === idx;
+                  const agree = sp.fp32ClassIndex === sp.quantClassIndex;
+                  const fp32Conf = Math.round(sp.fp32Probabilities[sp.fp32ClassIndex] * 100);
+                  const quantConf = Math.round(sp.quantProbabilities[sp.quantClassIndex] * 100);
+                  const fp32Correct = sp.fp32ClassIndex === sp.expectedClass;
+                  const quantCorrect = sp.quantClassIndex === sp.expectedClass;
+                  return (
+                    <div key={idx} className={`qz-sample-row ${expanded ? "expanded" : ""}`}>
+                      <div className="qz-sample-main" onClick={() => setExpandedSample(expanded ? null : idx)}>
+                        <img src={sample.dataUrl} alt={meta.classes[sp.expectedClass]?.name} className="qz-sample-thumb"/>
+                        <div className="qz-sample-meta">
+                          <div className="qz-sample-truth">
+                            <span className="qz-sample-truth-label">Ground truth:</span>{" "}
+                            <strong>{meta.classes[sp.expectedClass]?.name}</strong>
+                          </div>
+                          <div className="qz-sample-preds">
+                            <div className="qz-sample-pred">
+                              <span className="qz-sample-pred-tag qz-pred-fp32">FP32</span>
+                              <span className="qz-sample-pred-name">{meta.classes[sp.fp32ClassIndex]?.name}</span>
+                              <span className="qz-sample-pred-conf">({fp32Conf}%)</span>
+                              <span className={`qz-sample-pred-mark ${fp32Correct ? "ok" : "bad"}`}>
+                                {fp32Correct ? "✓" : "✗"}
+                              </span>
+                            </div>
+                            <div className="qz-sample-pred">
+                              <span className="qz-sample-pred-tag qz-pred-int8">INT8</span>
+                              <span className="qz-sample-pred-name">{meta.classes[sp.quantClassIndex]?.name}</span>
+                              <span className="qz-sample-pred-conf">({quantConf}%)</span>
+                              <span className={`qz-sample-pred-mark ${quantCorrect ? "ok" : "bad"}`}>
+                                {quantCorrect ? "✓" : "✗"}
+                              </span>
+                            </div>
+                          </div>
+                          <div className={`qz-sample-status ${agree ? "agree" : "disagree"}`}>
+                            {agree ? "models agree" : "models disagree"}
+                          </div>
+                        </div>
+                        <div className="qz-sample-arrow">{expanded ? "▴" : "▾"}</div>
+                      </div>
+                      {expanded && (
+                        <div className="qz-sample-detail">
+                          <div className="qz-sample-detail-title">All class probabilities</div>
+                          <div className="qz-sample-prob-grid">
+                            {meta.classes.map((cls, ci) => (
+                              <div key={ci} className="qz-prob-row">
+                                <span className="qz-prob-name">{cls.name}</span>
+                                <div className="qz-prob-bars">
+                                  <div className="qz-prob-bar-row">
+                                    <span className="qz-prob-bar-label">FP32</span>
+                                    <div className="qz-prob-bar-track">
+                                      <div className="qz-prob-bar-fill qz-prob-bar-fp32" style={{ width: `${(sp.fp32Probabilities[ci] || 0) * 100}%` }}/>
+                                    </div>
+                                    <span className="qz-prob-bar-pct">{((sp.fp32Probabilities[ci] || 0) * 100).toFixed(1)}%</span>
+                                  </div>
+                                  <div className="qz-prob-bar-row">
+                                    <span className="qz-prob-bar-label">INT8</span>
+                                    <div className="qz-prob-bar-track">
+                                      <div className="qz-prob-bar-fill qz-prob-bar-int8" style={{ width: `${(sp.quantProbabilities[ci] || 0) * 100}%` }}/>
+                                    </div>
+                                    <span className="qz-prob-bar-pct">{((sp.quantProbabilities[ci] || 0) * 100).toFixed(1)}%</span>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ── Test it yourself: upload section ── */}
+        {fp32Slot.model && int8Slot.model && (
+          <>
+            <div className="qz-section-label">Test it yourself</div>
+            <div className="qz-upload-card">
+              <div className="qz-compare-head">
+                <div className="qz-compare-title">Drop your own images</div>
+                <div className="qz-compare-sub">
+                  Compare what FP32 and INT8 predict on images you choose. Up to {MAX_UPLOADS} at a time.
+                </div>
+              </div>
+
+              <div
+                className={`qz-dropzone ${dragActive ? "active" : ""} ${uploads.length >= MAX_UPLOADS ? "full" : ""}`}
+                onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+                onDragLeave={() => setDragActive(false)}
+                onDrop={handleDrop}
+                onClick={() => uploads.length < MAX_UPLOADS && fileInputRef.current?.click()}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  style={{ display: "none" }}
+                  onChange={handleFileInput}
+                />
+                <div className="qz-dropzone-icon">↑</div>
+                <div className="qz-dropzone-text">
+                  {uploadProcessing
+                    ? "Processing..."
+                    : uploads.length >= MAX_UPLOADS
+                      ? `Limit reached — remove an image to add more (${uploads.length}/${MAX_UPLOADS})`
+                      : <>Drop images here, or click to upload <span className="qz-dropzone-counter">({uploads.length}/{MAX_UPLOADS})</span></>}
+                </div>
+              </div>
+
+              {uploadError && (
+                <div className="qz-upload-error">{uploadError}</div>
+              )}
+
+              {uploads.length > 0 && (
+                <div className="qz-sample-list">
+                  {uploads.map((u) => {
+                    const expanded = expandedUpload === u.id;
+                    const agree = u.fp32ClassIndex === u.quantClassIndex;
+                    const fp32Conf = Math.round(u.fp32Probabilities[u.fp32ClassIndex] * 100);
+                    const quantConf = Math.round(u.quantProbabilities[u.quantClassIndex] * 100);
+                    return (
+                      <div key={u.id} className={`qz-sample-row ${expanded ? "expanded" : ""}`}>
+                        <div className="qz-sample-main">
+                          <img src={u.thumbnail} alt="uploaded" className="qz-sample-thumb"/>
+                          <div className="qz-sample-meta" onClick={() => setExpandedUpload(expanded ? null : u.id)} style={{ cursor: "pointer" }}>
+                            <div className="qz-sample-truth qz-sample-upload-label">your upload</div>
+                            <div className="qz-sample-preds">
+                              <div className="qz-sample-pred">
+                                <span className="qz-sample-pred-tag qz-pred-fp32">FP32</span>
+                                <span className="qz-sample-pred-name">{meta.classes[u.fp32ClassIndex]?.name}</span>
+                                <span className="qz-sample-pred-conf">({fp32Conf}%)</span>
+                              </div>
+                              <div className="qz-sample-pred">
+                                <span className="qz-sample-pred-tag qz-pred-int8">INT8</span>
+                                <span className="qz-sample-pred-name">{meta.classes[u.quantClassIndex]?.name}</span>
+                                <span className="qz-sample-pred-conf">({quantConf}%)</span>
+                              </div>
+                            </div>
+                            <div className={`qz-sample-status ${agree ? "agree" : "disagree"}`}>
+                              {agree ? "models agree" : "models disagree"}
+                            </div>
+                          </div>
+                          <button
+                            className="qz-upload-remove"
+                            onClick={(e) => { e.stopPropagation(); removeUpload(u.id); }}
+                            title="Remove this upload"
+                            type="button"
+                          >
+                            ×
+                          </button>
+                        </div>
+                        {expanded && (
+                          <div className="qz-sample-detail">
+                            <div className="qz-sample-detail-title">All class probabilities</div>
+                            <div className="qz-sample-prob-grid">
+                              {meta.classes.map((cls, ci) => (
+                                <div key={ci} className="qz-prob-row">
+                                  <span className="qz-prob-name">{cls.name}</span>
+                                  <div className="qz-prob-bars">
+                                    <div className="qz-prob-bar-row">
+                                      <span className="qz-prob-bar-label">FP32</span>
+                                      <div className="qz-prob-bar-track">
+                                        <div className="qz-prob-bar-fill qz-prob-bar-fp32" style={{ width: `${(u.fp32Probabilities[ci] || 0) * 100}%` }}/>
+                                      </div>
+                                      <span className="qz-prob-bar-pct">{((u.fp32Probabilities[ci] || 0) * 100).toFixed(1)}%</span>
+                                    </div>
+                                    <div className="qz-prob-bar-row">
+                                      <span className="qz-prob-bar-label">INT8</span>
+                                      <div className="qz-prob-bar-track">
+                                        <div className="qz-prob-bar-fill qz-prob-bar-int8" style={{ width: `${(u.quantProbabilities[ci] || 0) * 100}%` }}/>
+                                      </div>
+                                      <span className="qz-prob-bar-pct">{((u.quantProbabilities[ci] || 0) * 100).toFixed(1)}%</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </>
+        )}
 
         {/* ── Action row ── */}
         <div className="qz-actions">

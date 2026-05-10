@@ -245,3 +245,201 @@
   .qz-actions { flex-direction: column; align-items: stretch; }
   .qz-action-summary { text-align: left; padding: .5rem 0; }
 }
+
+/* ────────────────────────────────────────────────────────── */
+/* ── Compare predictions: training samples + uploads ── */
+/* ────────────────────────────────────────────────────────── */
+
+.qz-compare-card,
+.qz-upload-card {
+  background: #fff; border: 1.5px solid #EBEBEB; border-radius: 14px;
+  overflow: hidden;
+}
+
+.qz-compare-head {
+  padding: 1rem 1.5rem; border-bottom: 1px solid #F5F5F5;
+}
+.qz-compare-title { font-size: .98rem; font-weight: 700; color: #111; }
+.qz-compare-sub { font-size: .8rem; color: #aaa; margin-top: .2rem; line-height: 1.5; }
+
+.qz-compare-summary {
+  padding: .75rem 1.5rem;
+  border-bottom: 1px solid #F5F5F5;
+  font-family: var(--mono); font-size: .82rem; font-weight: 600;
+  background: #FAFAFA;
+}
+.qz-summary-good { color: #16A34A; }
+.qz-summary-mixed { color: #D97706; }
+
+/* ── Sample list (used for both training + uploads) ── */
+.qz-sample-list { display: flex; flex-direction: column; }
+.qz-sample-row { border-bottom: 1px solid #F5F5F5; transition: background .15s; }
+.qz-sample-row:last-child { border-bottom: none; }
+.qz-sample-row.expanded { background: #FAFAFA; }
+
+.qz-sample-main {
+  display: flex; align-items: center; gap: 1rem;
+  padding: 1rem 1.5rem;
+  cursor: pointer; transition: background .15s;
+}
+.qz-sample-row:not(.expanded) .qz-sample-main:hover { background: #FAFAFA; }
+
+.qz-sample-thumb {
+  width: 64px; height: 64px;
+  border-radius: 8px; object-fit: cover;
+  border: 1.5px solid #E8E8E8; flex-shrink: 0;
+}
+
+.qz-sample-meta {
+  flex: 1; display: flex; flex-direction: column; gap: .35rem;
+  min-width: 0;
+}
+
+.qz-sample-truth {
+  font-size: .82rem; color: #555;
+}
+.qz-sample-truth-label { color: #aaa; font-family: var(--mono); font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; }
+.qz-sample-truth strong { color: #111; font-weight: 700; }
+.qz-sample-upload-label {
+  font-family: var(--mono); font-size: .72rem; color: #aaa;
+  text-transform: uppercase; letter-spacing: .04em;
+}
+
+.qz-sample-preds {
+  display: flex; flex-wrap: wrap; gap: .5rem 1rem;
+  font-size: .85rem;
+}
+.qz-sample-pred {
+  display: inline-flex; align-items: center; gap: .35rem;
+  font-family: var(--mono);
+}
+.qz-sample-pred-tag {
+  font-size: .65rem; font-weight: 700;
+  padding: .12rem .42rem; border-radius: 4px;
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.qz-pred-fp32 { background: #F1F5F9; color: #475569; }
+.qz-pred-int8 { background: #FEE2E2; color: #C0392B; }
+.qz-sample-pred-name { color: #111; font-weight: 600; }
+.qz-sample-pred-conf { color: #888; }
+.qz-sample-pred-mark {
+  font-weight: 800; font-size: .9rem;
+  width: 16px; text-align: center;
+}
+.qz-sample-pred-mark.ok { color: #16A34A; }
+.qz-sample-pred-mark.bad { color: #C0392B; }
+
+.qz-sample-status {
+  font-size: .72rem; font-family: var(--mono);
+  text-transform: uppercase; letter-spacing: .04em;
+  font-weight: 600;
+}
+.qz-sample-status.agree { color: #16A34A; }
+.qz-sample-status.disagree { color: #D97706; }
+
+.qz-sample-arrow {
+  color: #bbb; font-size: 1rem; flex-shrink: 0;
+  font-family: var(--mono);
+}
+
+/* ── Expanded probability detail ── */
+.qz-sample-detail {
+  padding: 1rem 1.5rem 1.25rem;
+  background: #fff;
+  border-top: 1px solid #F0F0F0;
+}
+.qz-sample-detail-title {
+  font-size: .72rem; color: #aaa; font-family: var(--mono);
+  text-transform: uppercase; letter-spacing: .06em;
+  margin-bottom: .75rem;
+}
+.qz-sample-prob-grid {
+  display: flex; flex-direction: column; gap: .85rem;
+}
+.qz-prob-row {
+  display: flex; gap: 1rem; align-items: center;
+}
+.qz-prob-name {
+  width: 100px; flex-shrink: 0;
+  font-size: .82rem; font-weight: 600; color: #111;
+  font-family: var(--font);
+}
+.qz-prob-bars { flex: 1; display: flex; flex-direction: column; gap: .25rem; }
+.qz-prob-bar-row {
+  display: grid; grid-template-columns: 38px 1fr 50px;
+  gap: .55rem; align-items: center;
+}
+.qz-prob-bar-label {
+  font-size: .68rem; font-family: var(--mono); font-weight: 600;
+  color: #888;
+}
+.qz-prob-bar-track {
+  height: 8px; background: #F5F5F5; border-radius: 4px; overflow: hidden;
+}
+.qz-prob-bar-fill {
+  height: 100%; border-radius: 4px;
+  transition: width .4s ease;
+}
+.qz-prob-bar-fp32 { background: #94A3B8; }
+.qz-prob-bar-int8 { background: #C0392B; }
+.qz-prob-bar-pct {
+  font-size: .72rem; font-family: var(--mono); color: #555;
+  text-align: right;
+}
+
+/* ── Upload dropzone ── */
+.qz-dropzone {
+  margin: 1.25rem 1.5rem;
+  border: 2px dashed #E0E0E0; border-radius: 12px;
+  padding: 2rem 1rem; text-align: center;
+  cursor: pointer; transition: all .15s;
+  background: #FAFAFA;
+}
+.qz-dropzone:hover:not(.full) {
+  border-color: #C0392B; background: #FEF2F2;
+}
+.qz-dropzone.active {
+  border-color: #C0392B; background: #FEF2F2; transform: scale(1.01);
+}
+.qz-dropzone.full {
+  cursor: not-allowed; opacity: .55;
+}
+.qz-dropzone-icon {
+  font-size: 1.6rem; color: #C0392B;
+  margin-bottom: .5rem; font-weight: 800; font-family: var(--mono);
+}
+.qz-dropzone-text {
+  font-size: .92rem; color: #555;
+}
+.qz-dropzone-counter {
+  font-family: var(--mono); font-size: .78rem; color: #aaa;
+  margin-left: .35rem;
+}
+
+.qz-upload-error {
+  margin: 0 1.5rem 1rem;
+  padding: .65rem .9rem;
+  background: #FEF2F2; border: 1.5px solid #FECACA; border-radius: 8px;
+  color: #C0392B; font-size: .82rem; font-family: var(--mono);
+}
+
+.qz-upload-remove {
+  background: none; border: none;
+  width: 28px; height: 28px; border-radius: 50%;
+  color: #aaa; font-size: 1.2rem; font-weight: 600;
+  cursor: pointer; transition: all .15s;
+  flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--mono); line-height: 1;
+}
+.qz-upload-remove:hover {
+  background: #FEF2F2; color: #C0392B;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .qz-sample-main { flex-direction: column; align-items: stretch; }
+  .qz-sample-thumb { width: 100%; height: 160px; }
+  .qz-prob-name { width: 70px; font-size: .75rem; }
+  .qz-prob-bar-row { grid-template-columns: 30px 1fr 42px; gap: .35rem; }
+}

@@ -63,6 +63,21 @@ export interface AccuracyMeasurement {
   precision: Precision;
 }
 
+// Per-sample prediction details for the comparison UI
+export interface SamplePrediction {
+  sampleIndex: number;
+  expectedClass: number;
+  fp32ClassIndex: number;
+  fp32Probabilities: number[];
+  quantClassIndex: number;
+  quantProbabilities: number[];
+}
+
+// Detailed accuracy measurement that also returns per-sample predictions
+export interface AccuracyMeasurementDetailed extends AccuracyMeasurement {
+  perSample: SamplePrediction[];
+}
+
 // A single sample for accuracy measurement: the input tensor (already preprocessed)
 // plus the ground-truth class index.
 export interface AccuracySample {
