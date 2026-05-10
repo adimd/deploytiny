@@ -471,6 +471,14 @@ export default function ImageTrain() {
           }
         }
 
+        // Take up to 5 samples per class for accuracy measurement on the Quantize page
+        const sampleSubset: { dataUrl: string; classIndex: number }[] = [];
+        classes.forEach((cls, ci) => {
+          cls.samples.slice(0, 5).forEach(dataUrl => {
+            sampleSubset.push({ dataUrl, classIndex: ci });
+          });
+        });
+
         const deployMeta = {
           trainMode,
           ...(trainMode === "transfer" ? {
@@ -487,6 +495,7 @@ export default function ImageTrain() {
           trainAccuracy: lastAcc,
           valAccuracy:   lastVal,
           paramCount,
+          samples: sampleSubset,
         };
         localStorage.setItem(DEPLOY_STORAGE_KEY, JSON.stringify(deployMeta));
       } catch (saveErr) {

@@ -7,6 +7,8 @@ import AudioCollect from "./pages/AudioCollect";
 import AudioPreprocess from "./pages/AudioPreprocess";
 import AudioTrain from "./pages/AudioTrain";
 import ImageDeploy from "./pages/ImageDeploy";
+import ImageQuantize from "./pages/ImageQuantize";
+
 
 export default function App() {
   return (
