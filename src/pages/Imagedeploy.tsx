@@ -101,6 +101,8 @@ function sanitizeForFilename(s: string): string {
   return s.replace(/[^a-zA-Z0-9_-]/g, "_") || "model";
 }
 
+
+
 // Estimate full model size depending on user's training mode + precision
 function estimateModelSize(meta: SavedMeta, precision: Precision): { bytes: number; note: string } {
   const bpw = PRECISION_INFO[precision].bytesPerWeight;
