@@ -305,9 +305,8 @@ export default function ImageTrain() {
   const handleRetrain = () => {
     if (status !== "done") return;
     stopInference();
-    setStatus("ready");
+    // Clear previous results immediately so user sees a clean slate
     setSettingsDirty(false);
-    // Clear previous results so the user clearly sees a fresh run is starting
     setAccHistory([]); setLossHistory([]); setValHistory([]);
     setEpoch(0);
     setFinalAcc(null);
@@ -317,13 +316,15 @@ export default function ImageTrain() {
     setWeights(null);
     setInferReady(false);
     setTrainSeconds(null);
-    // Kick off training right away
-    setTimeout(() => startTraining(), 50);
+    setProgressLabel("Starting...");
+    setProgressSub("");
+    // Call training directly with force flag — no setTimeout, no race condition
+    startTraining(true);
   };
 
   // ── Main train function ──
-  const startTraining = async () => {
-    if (status !== "ready") return;
+  const startTraining = async (force: boolean = false) => {
+    if (!force && status !== "ready") return;
     setStatus("loading");
     setShowAdvanced(false);
     setSettingsDirty(false);
