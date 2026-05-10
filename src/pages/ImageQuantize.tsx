@@ -112,8 +112,15 @@ export default function ImageQuantize() {
         const loadedModel = await tf.loadLayersModel(DEPLOY_MODEL_KEY);
         setOrigModel(loadedModel);
 
-        // Compute layer compression immediately
-        setLayers(compressLayers(loadedModel));
+        // Compute layer compression immediately. For transfer learning,
+        // prepend a synthetic MobileNet row so the user sees the full
+        // pipeline size — even though MobileNet itself isn't quantized
+        // in this version (it's a frozen feature extractor loaded at runtime).
+        const headLayers = compressLayers(loadedModel);
+        const allLayers = m.trainMode === "transfer"
+          ? [buildMobileNetRow(m), ...headLayers]
+          : headLayers;
+        setLayers(allLayers);
 
         // Build FP32 quantized model (passthrough)
         const fp32 = quantizeFP32(loadedModel);
@@ -361,8 +368,16 @@ export default function ImageQuantize() {
     ? meta.transferModel === "mobilenet-v2" ? "MobileNet V2" : "MobileNet V1"
     : "Small CNN";
 
-  const fp32TotalBytes = fp32Slot.model?.totalBytes ?? 0;
-  const int8TotalBytes = int8Slot.model?.totalBytes ?? 0;
+  // Headline sizes. For transfer learning, we want the *full pipeline* size
+  // (MobileNet + head) shown to the user, since that's what they'd actually
+  // deploy. The layer table totals already include the synthetic MobileNet
+  // row (when applicable), so we use those as the source of truth.
+  const isTransfer = meta.trainMode === "transfer";
+  const layerTotalFp32 = layers.reduce((a, l) => a + l.fp32Bytes, 0);
+  const layerTotalInt8 = layers.reduce((a, l) => a + l.int8Bytes, 0);
+
+  const fp32TotalBytes = isTransfer ? layerTotalFp32 : (fp32Slot.model?.totalBytes ?? 0);
+  const int8TotalBytes = isTransfer ? layerTotalInt8 : (int8Slot.model?.totalBytes ?? 0);
 
   const fp32Slots: { slot: QuantSlot; }[] = [
     { slot: fp32Slot },
@@ -404,7 +419,9 @@ export default function ImageQuantize() {
           {fp32Slots.map(({ slot }) => {
             const info = PRECISIONS[slot.precision];
             const sel = selected === slot.precision;
-            const bytes = slot.model?.totalBytes ?? (slot.precision === "fp32" ? fp32TotalBytes : 0);
+            const bytes = slot.precision === "fp32"
+              ? fp32TotalBytes
+              : (isTransfer ? int8TotalBytes : (slot.model?.totalBytes ?? 0));
             const ratio = slot.model?.compressionRatio ?? 1.0;
 
             return (
@@ -465,7 +482,7 @@ export default function ImageQuantize() {
         <div className="qz-disclaimer">
           <div className="qz-disclaimer-icon">i</div>
           <div className="qz-disclaimer-body">
-            <div className="qz-disclaimer-title">About these accuracy numbers</div>
+            <div className="qz-disclaimer-title">About these numbers</div>
             <p>
               <strong>Your data:</strong> measured by running both the FP32 and quantized models
               on your training samples and comparing predictions. It reflects how the quantized
@@ -477,6 +494,14 @@ export default function ImageQuantize() {
               benchmarks. A more conservative estimate of what to expect on unseen data.
             </p>
             <p>The truth on real-world data is usually between these two numbers.</p>
+            {isTransfer && (
+              <p>
+                <strong>What's quantized:</strong> the trained head is what gets quantized here.
+                The {meta.transferModel === "mobilenet-v2" ? "MobileNet V2" : "MobileNet V1"} feature
+                extractor stays at FP32 in this version of deploytiny — its size is shown for context.
+                Full-pipeline quantization (including MobileNet) is on the roadmap.
+              </p>
+            )}
           </div>
         </div>
 
@@ -544,15 +569,16 @@ export default function ImageQuantize() {
             </thead>
             <tbody>
               {layers.map((l, i) => (
-                <tr key={l.name}>
+                <tr key={l.name} className={l.frozen ? "qz-layer-frozen" : ""}>
                   <td>
                     <span className="qz-layer-dot" style={{ background: layerColor(i) }}/>
                     {l.name}
+                    {l.frozen && <span className="qz-frozen-badge" title="Frozen feature extractor — not quantized in this version">frozen</span>}
                   </td>
                   <td className="qz-layer-type">{l.type}</td>
                   <td>{l.paramCount.toLocaleString()}</td>
                   <td>{formatSize(l.fp32Bytes)}</td>
-                  <td>{formatSize(l.int8Bytes)}</td>
+                  <td>{l.frozen ? `~${formatSize(l.int8Bytes)}` : formatSize(l.int8Bytes)}</td>
                 </tr>
               ))}
             </tbody>
@@ -827,6 +853,27 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// Build a synthetic LayerCompression row for the frozen MobileNet feature
+// extractor. The numbers are well-known fixed values from the standard
+// ImageNet-pretrained MobileNet architecture (alpha=1.0). We mark it `frozen`
+// so the UI can render it differently — it's there for context only.
+function buildMobileNetRow(meta: SavedMeta): LayerCompression {
+  const isV2 = meta.transferModel === "mobilenet-v2";
+  // Standard MobileNet param counts at alpha=1.0
+  const paramCount = isV2 ? 3_504_872 : 4_253_864;
+  return {
+    name: isV2 ? "MobileNet V2" : "MobileNet V1",
+    type: "feature extractor",
+    paramCount,
+    fp32Bytes: paramCount * 4,
+    // INT8 is an estimate for context — we don't actually quantize MobileNet
+    // in this version of the pipeline. Real per-tensor quant of MobileNet is
+    // on the roadmap.
+    int8Bytes: paramCount * 1,
+    frozen: true,
+  };
 }
 
 const LAYER_COLORS = [

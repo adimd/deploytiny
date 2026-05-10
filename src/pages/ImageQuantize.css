@@ -443,3 +443,21 @@
   .qz-prob-name { width: 70px; font-size: .75rem; }
   .qz-prob-bar-row { grid-template-columns: 30px 1fr 42px; gap: .35rem; }
 }
+
+/* ── Frozen layer indicator (e.g. MobileNet feature extractor) ── */
+.qz-layer-frozen td {
+  background: #FAFAFA;
+  color: #555;
+}
+.qz-layer-frozen td:first-child {
+  font-weight: 700;
+}
+.qz-frozen-badge {
+  display: inline-block;
+  margin-left: .55rem;
+  font-size: .58rem; padding: .12rem .42rem; border-radius: 4px;
+  background: #F1F5F9; color: #475569;
+  font-family: var(--mono); font-weight: 600;
+  text-transform: uppercase; letter-spacing: .04em;
+  vertical-align: middle;
+}

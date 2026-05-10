@@ -53,6 +53,9 @@ export interface LayerCompression {
   paramCount: number;
   fp32Bytes: number;
   int8Bytes: number;
+  // True if this layer is a frozen feature extractor (e.g., MobileNet)
+  // included for context but NOT quantized in this version of the pipeline.
+  frozen?: boolean;
 }
 
 // Measured accuracy on user's actual training samples
