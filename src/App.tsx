@@ -21,6 +21,7 @@ export default function App() {
       <Route path="/get-started/audio/preprocess" element={<AudioPreprocess />} />
       <Route path="/get-started/audio/train" element={<AudioTrain />} />
       <Route path="/get-started/image/deploy" element={<ImageDeploy />} />
+      <Route path="/get-started/image/quantize" element={<ImageQuantize />} />
     </Routes>
   );
 }
