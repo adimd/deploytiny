@@ -346,3 +346,43 @@ input[type=range] { width: 100%; accent-color: #C0392B; cursor: pointer; }
   .tr-inference-layout { grid-template-columns: 1fr; }
   .tr-params { grid-template-columns: 1fr; }
 }
+
+/* ── Quantization story note on model cards ── */
+.tr-model-card-note {
+  display: flex; gap: .5rem; align-items: flex-start;
+  margin-top: .75rem; padding-top: .75rem;
+  border-top: 1px dashed #EEE;
+  font-size: .72rem; color: #888; line-height: 1.5;
+}
+.tr-model-card-note-icon {
+  flex-shrink: 0;
+  width: 14px; height: 14px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: .75rem; color: #999;
+  font-style: italic;
+}
+.tr-model-card-note--scratch {
+  color: #16A34A;
+}
+.tr-model-card-note--scratch .tr-model-card-note-icon {
+  color: #16A34A;
+}
+
+/* ── Contextual CNN hints ── */
+.tr-cnn-hints {
+  display: flex; flex-direction: column; gap: .5rem;
+  margin-top: .75rem;
+}
+.tr-cnn-hint {
+  display: flex; gap: .55rem; align-items: flex-start;
+  background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px;
+  padding: .55rem .75rem;
+  font-size: .78rem; color: #78350F; line-height: 1.55;
+}
+.tr-cnn-hint-icon {
+  flex-shrink: 0;
+  width: 18px; height: 18px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #FDE68A; color: #92400E;
+  border-radius: 50%; font-size: .7rem; font-weight: 800; font-family: var(--mono);
+}

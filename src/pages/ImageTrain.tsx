@@ -27,6 +27,7 @@ const TRANSFER_MODELS = [
     paramsLabel: "3.2M",
     sizeKB: 13000,
     inputSize: 224,
+    quantNote: "Quantization currently applies to your trained head only. MobileNet stays FP32 in this version.",
   },
   {
     id: "mobilenet-v2",
@@ -38,6 +39,7 @@ const TRANSFER_MODELS = [
     paramsLabel: "3.5M",
     sizeKB: 14000,
     inputSize: 224,
+    quantNote: "Quantization currently applies to your trained head only. MobileNet stays FP32 in this version.",
   },
 ];
 
@@ -47,10 +49,11 @@ const SCRATCH_MODEL = {
   sub: "Trains the entire model on your data",
   tag: "From scratch",
   tagClass: "tag-orange",
+  quantNote: "Full pipeline quantization. INT4, ternary, and binary precisions are on the roadmap.",
 };
 
 // ── Small CNN configuration helpers ──
-const INPUT_SIZES = [48, 96] as const;
+const INPUT_SIZES = [48, 96, 128, 224] as const;
 const DEPTH_OPTIONS = [
   { id: "shallow", label: "Shallow", blocks: 2 },
   { id: "medium",  label: "Medium",  blocks: 3 },
@@ -955,6 +958,10 @@ normalized to [0, 1] — no separate feature extractor needed.
                     <span>·</span>
                     <span>{m.embSize}-d embedding</span>
                   </div>
+                  <div className="tr-model-card-note">
+                    <span className="tr-model-card-note-icon">ⓘ</span>
+                    {m.quantNote}
+                  </div>
                 </div>
               );
             })}
@@ -972,6 +979,10 @@ normalized to [0, 1] — no separate feature extractor needed.
                 <span>{cnnDescription.totalParams.toLocaleString()} params</span>
                 <span>·</span>
                 <span>{cnnInputSize}×{cnnInputSize} grayscale</span>
+              </div>
+              <div className="tr-model-card-note tr-model-card-note--scratch">
+                <span className="tr-model-card-note-icon">ⓘ</span>
+                {SCRATCH_MODEL.quantNote}
               </div>
             </div>
           </div>
@@ -1066,6 +1077,30 @@ normalized to [0, 1] — no separate feature extractor needed.
                   <div className="tr-readout-sub">after quantization</div>
                 </div>
               </div>
+
+              {(() => {
+                const hints: string[] = [];
+                if (cnnInputSize === 224) {
+                  hints.push("Training at 224×224 takes longer in the browser — typically 30+ seconds per epoch with this dataset.");
+                }
+                if (fp32KB > 4000) {
+                  hints.push(`At ${(fp32KB/1024).toFixed(1)} MB FP32, this model may be too large for some microcontrollers. Consider smaller depth or width if targeting Arduino-class boards.`);
+                }
+                if (cnnInputSize === 48 && cnnWidth.base === 32 && cnnDepth.blocks >= 3) {
+                  // 48×48 with deep+wide is overkill — small input doesn't justify big network
+                  hints.push("48×48 input with this much depth/width may be over-parameterized. Consider 96×96 or smaller width for better fit.");
+                }
+                return hints.length > 0 ? (
+                  <div className="tr-cnn-hints">
+                    {hints.map((h, i) => (
+                      <div key={i} className="tr-cnn-hint">
+                        <span className="tr-cnn-hint-icon">!</span>
+                        {h}
+                      </div>
+                    ))}
+                  </div>
+                ) : null;
+              })()}
 
               <button
                 className={`tr-explain-toggle ${showCnnExplain ? "open" : ""}`}
