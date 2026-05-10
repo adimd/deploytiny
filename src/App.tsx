@@ -2,6 +2,10 @@ import { Routes, Route } from "react-router-dom";
 import Home from "./pages/Home";
 import GetStarted from "./pages/GetStarted";
 import ImageCollect from "./pages/ImageCollect";
+import ImageTrain from "./pages/ImageTrain";
+import AudioCollect from "./pages/AudioCollect";
+import AudioPreprocess from "./pages/AudioPreprocess";
+import AudioTrain from "./pages/AudioTrain";
 
 export default function App() {
   return (
@@ -9,6 +13,10 @@ export default function App() {
       <Route path="/" element={<Home />} />
       <Route path="/get-started" element={<GetStarted />} />
       <Route path="/get-started/image" element={<ImageCollect />} />
+      <Route path="/get-started/image/train" element={<ImageTrain />} />
+      <Route path="/get-started/audio" element={<AudioCollect />} />
+      <Route path="/get-started/audio/preprocess" element={<AudioPreprocess />} />
+      <Route path="/get-started/audio/train" element={<AudioTrain />} />
     </Routes>
   );
 }
