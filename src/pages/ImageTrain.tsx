@@ -182,6 +182,8 @@ export default function ImageTrain() {
   const [showAdvanced,  setShowAdvanced]  = useState(false);
   const [showWeights,   setShowWeights]   = useState(false);
   const [selectedLayer, setSelectedLayer] = useState<number|null>(null);
+  const [showCnnExplain, setShowCnnExplain] = useState(false);
+  const [settingsDirty, setSettingsDirty]   = useState(false);
 
   // Mode + model selection
   const [trainMode,    setTrainMode]    = useState<TrainMode>("transfer");
@@ -295,11 +297,36 @@ export default function ImageTrain() {
     return model;
   };
 
+  // ── Helpers for retrain workflow ──
+  const markDirtyIfDone = () => {
+    if (status === "done") setSettingsDirty(true);
+  };
+
+  const handleRetrain = () => {
+    if (status !== "done") return;
+    stopInference();
+    setStatus("ready");
+    setSettingsDirty(false);
+    // Clear previous results so the user clearly sees a fresh run is starting
+    setAccHistory([]); setLossHistory([]); setValHistory([]);
+    setEpoch(0);
+    setFinalAcc(null);
+    setConfusion(null);
+    setClassStats([]);
+    setTrainVal(null);
+    setWeights(null);
+    setInferReady(false);
+    setTrainSeconds(null);
+    // Kick off training right away
+    setTimeout(() => startTraining(), 50);
+  };
+
   // ── Main train function ──
   const startTraining = async () => {
     if (status !== "ready") return;
     setStatus("loading");
     setShowAdvanced(false);
+    setSettingsDirty(false);
     setAccHistory([]); setLossHistory([]); setValHistory([]);
     setEpoch(0);
     setFinalAcc(null);
@@ -867,7 +894,7 @@ normalized to [0, 1] — no separate feature extractor needed.
                 <div
                   key={m.id}
                   className={`tr-model-card ${sel ? "selected" : ""}`}
-                  onClick={() => { setTrainMode("transfer"); setSelectedTransferModel(m.id); }}
+                  onClick={() => { setTrainMode("transfer"); setSelectedTransferModel(m.id); markDirtyIfDone(); }}
                 >
                   <div className="tr-model-card-head">
                     <span className="tr-model-card-name">{m.name}</span>
@@ -885,7 +912,7 @@ normalized to [0, 1] — no separate feature extractor needed.
 
             <div
               className={`tr-model-card ${trainMode === "scratch" ? "selected" : ""}`}
-              onClick={() => setTrainMode("scratch")}
+              onClick={() => { setTrainMode("scratch"); markDirtyIfDone(); }}
             >
               <div className="tr-model-card-head">
                 <span className="tr-model-card-name">{SCRATCH_MODEL.name}</span>
@@ -916,13 +943,16 @@ normalized to [0, 1] — no separate feature extractor needed.
                       <button
                         key={s}
                         className={`tr-knob-opt ${cnnInputIdx === i ? "selected" : ""}`}
-                        onClick={() => setCnnInputIdx(i)}
+                        onClick={() => { setCnnInputIdx(i); markDirtyIfDone(); }}
                       >
                         {s}×{s}
                       </button>
                     ))}
                   </div>
-                  <div className="tr-knob-desc">grayscale</div>
+                  <div className="tr-knob-help">
+                    Larger images keep more detail. Smaller images train faster and use less memory.
+                  </div>
+                  <div className="tr-knob-desc">grayscale · {cnnInputSize * cnnInputSize} pixels</div>
                 </div>
 
                 <div>
@@ -932,11 +962,14 @@ normalized to [0, 1] — no separate feature extractor needed.
                       <button
                         key={d.id}
                         className={`tr-knob-opt ${cnnDepthIdx === i ? "selected" : ""}`}
-                        onClick={() => setCnnDepthIdx(i)}
+                        onClick={() => { setCnnDepthIdx(i); markDirtyIfDone(); }}
                       >
                         {d.label}
                       </button>
                     ))}
+                  </div>
+                  <div className="tr-knob-help">
+                    More layers learn more complex patterns but make the model bigger.
                   </div>
                   <div className="tr-knob-desc">{cnnDepth.blocks} conv blocks</div>
                 </div>
@@ -948,13 +981,16 @@ normalized to [0, 1] — no separate feature extractor needed.
                       <button
                         key={w.id}
                         className={`tr-knob-opt ${cnnWidthIdx === i ? "selected" : ""}`}
-                        onClick={() => setCnnWidthIdx(i)}
+                        onClick={() => { setCnnWidthIdx(i); markDirtyIfDone(); }}
                       >
                         {w.label}
                       </button>
                     ))}
                   </div>
-                  <div className="tr-knob-desc">{cnnWidth.base} base filters</div>
+                  <div className="tr-knob-help">
+                    More filters per layer detect more visual features.
+                  </div>
+                  <div className="tr-knob-desc">{cnnWidth.base} filters per block</div>
                 </div>
 
                 <div className="tr-cnn-preview">
@@ -968,16 +1004,56 @@ normalized to [0, 1] — no separate feature extractor needed.
                 <div className="tr-readout-cell">
                   <div className="tr-readout-lbl">Parameters</div>
                   <div className="tr-readout-val">{cnnDescription.totalParams.toLocaleString()}</div>
+                  <div className="tr-readout-sub">numbers the model learns</div>
                 </div>
                 <div className="tr-readout-cell">
                   <div className="tr-readout-lbl">Size (FP32)</div>
                   <div className="tr-readout-val">{fp32KB} KB</div>
+                  <div className="tr-readout-sub">full precision</div>
                 </div>
                 <div className="tr-readout-cell">
                   <div className="tr-readout-lbl">Size (INT8)</div>
                   <div className="tr-readout-val">{int8KB} KB</div>
+                  <div className="tr-readout-sub">after quantization</div>
                 </div>
               </div>
+
+              <button
+                className={`tr-explain-toggle ${showCnnExplain ? "open" : ""}`}
+                onClick={() => setShowCnnExplain(v => !v)}
+                type="button"
+              >
+                About these settings <span className="tr-arrow">▾</span>
+              </button>
+
+              {showCnnExplain && (
+                <div className="tr-explain-panel">
+                  <div className="tr-explain-section">
+                    <div className="tr-explain-key">Parameters</div>
+                    <div className="tr-explain-val">
+                      The numbers the model learns during training. More parameters = more capacity
+                      to learn complex patterns, but also a bigger file and slower inference.
+                    </div>
+                  </div>
+                  <div className="tr-explain-section">
+                    <div className="tr-explain-key">FP32 vs INT8</div>
+                    <div className="tr-explain-val">
+                      FP32 (32-bit floats) is how models train. INT8 (8-bit integers) is the
+                      compressed version you'd actually deploy to a microcontroller — about 4× smaller
+                      and 3-5× faster, with usually a small accuracy drop. The quantization step
+                      happens later, in deploy.
+                    </div>
+                  </div>
+                  <div className="tr-explain-section">
+                    <div className="tr-explain-key">How to read these numbers</div>
+                    <div className="tr-explain-val">
+                      Compare the INT8 size against your target board's flash memory. ESP32-S3 has
+                      8 MB flash, Arduino Nano 33 BLE has 1 MB, STM32 Nucleo M4 has 1 MB. Your model
+                      needs to fit comfortably with room left for the rest of your firmware.
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1010,10 +1086,10 @@ normalized to [0, 1] — no separate feature extractor needed.
               <div className="tr-adv-section-title">Training parameters</div>
               <div className="tr-params">
                 {[
-                  { label: "Epochs",        val: totalEpochs,    min: 10, max: 200, step: 10, display: String(totalEpochs),           onChange: (v: number) => setTotalEpochs(v),    desc: "More epochs can improve accuracy" },
-                  { label: "Learning rate", val: lr,             min: 1,  max: 5,   step: 1,  display: String(lrValues[lr-1]),         onChange: (v: number) => setLr(v),             desc: "Lower is more stable but slower" },
-                  { label: "Batch size",    val: batchIdx,       min: 1,  max: 4,   step: 1,  display: String(bsValues[batchIdx-1]),   onChange: (v: number) => setBatchIdx(v),       desc: "Larger batches are faster" },
-                  { label: "Dropout",       val: dropoutIdx,     min: 0,  max: 5,   step: 1,  display: String(drValues[dropoutIdx]),   onChange: (v: number) => setDropoutIdx(v),     desc: "Higher reduces overfitting" },
+                  { label: "Epochs",        val: totalEpochs,    min: 10, max: 200, step: 10, display: String(totalEpochs),           onChange: (v: number) => { setTotalEpochs(v); markDirtyIfDone(); },    desc: "More epochs can improve accuracy" },
+                  { label: "Learning rate", val: lr,             min: 1,  max: 5,   step: 1,  display: String(lrValues[lr-1]),         onChange: (v: number) => { setLr(v); markDirtyIfDone(); },             desc: "Lower is more stable but slower" },
+                  { label: "Batch size",    val: batchIdx,       min: 1,  max: 4,   step: 1,  display: String(bsValues[batchIdx-1]),   onChange: (v: number) => { setBatchIdx(v); markDirtyIfDone(); },       desc: "Larger batches are faster" },
+                  { label: "Dropout",       val: dropoutIdx,     min: 0,  max: 5,   step: 1,  display: String(drValues[dropoutIdx]),   onChange: (v: number) => { setDropoutIdx(v); markDirtyIfDone(); },     desc: "Higher reduces overfitting" },
                 ].map(p => (
                   <div className="tr-param" key={p.label}>
                     <div className="tr-param-header">
@@ -1305,6 +1381,14 @@ normalized to [0, 1] — no separate feature extractor needed.
           </>
         )}
 
+        {/* ── Settings-changed hint ── */}
+        {status === "done" && settingsDirty && (
+          <div className="tr-dirty-hint">
+            <span className="tr-dirty-dot"/>
+            Settings changed — click Retrain to apply
+          </div>
+        )}
+
         {/* ── Actions ── */}
         <div className="tr-actions">
           <button className="tr-btn-outline" onClick={() => { stopInference(); navigate("/get-started/image"); }}>
@@ -1319,6 +1403,13 @@ normalized to [0, 1] — no separate feature extractor needed.
                 title="Download trained model as a zip"
               >
                 {downloadingModel ? "Preparing..." : "↓ Download model"}
+              </button>
+              <button
+                className={`tr-btn-outline ${settingsDirty ? "tr-btn-attention" : ""}`}
+                onClick={handleRetrain}
+                title="Train again with current settings"
+              >
+                ↻ Retrain
               </button>
               <button className="tr-btn-red" onClick={() => { stopInference(); navigate("/get-started/image/deploy", { state: { classes, model: "trained" } }); }}>
                 Deploy →
