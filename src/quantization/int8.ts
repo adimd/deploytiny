@@ -21,8 +21,9 @@ interface QuantizedTensor {
   shape: number[];
 }
 
-function quantizeTensor(t: tf.Tensor): QuantizedTensor {
-  const data = t.dataSync() as Float32Array;
+// Pure data-side quantization: doesn't touch tf.Tensor lifecycle.
+// Caller passes raw Float32Array + shape; we return packed int8 representation.
+function quantizeFloats(data: Float32Array, shape: number[]): QuantizedTensor {
   let absMax = 0;
   for (let i = 0; i < data.length; i++) {
     const v = Math.abs(data[i]);
@@ -35,15 +36,16 @@ function quantizeTensor(t: tf.Tensor): QuantizedTensor {
     const q = Math.round(data[i] / scale);
     int8[i] = Math.max(-128, Math.min(127, q));
   }
-  return { int8, scale, shape: t.shape };
+  return { int8, scale, shape };
 }
 
-function dequantizeTensor(qt: QuantizedTensor): tf.Tensor {
+// Convert an int8 representation back to a Float32Array of the same length.
+function dequantizeToFloats(qt: QuantizedTensor): Float32Array {
   const floats = new Float32Array(qt.int8.length);
   for (let i = 0; i < qt.int8.length; i++) {
     floats[i] = qt.int8[i] * qt.scale;
   }
-  return tf.tensor(floats, qt.shape);
+  return floats;
 }
 
 export async function quantizeINT8(model: tf.LayersModel): Promise<QuantizedModel> {
@@ -52,8 +54,10 @@ export async function quantizeINT8(model: tf.LayersModel): Promise<QuantizedMode
 
   let totalInt8Bytes = 0;
 
-  // For each layer, quantize each of its weight tensors and write back the
-  // dequantized version. The model now behaves like INT8 on FP32 hardware.
+  // For each layer, read its weight values, quantize them in pure-JS land,
+  // build fresh FP32 tensors holding the dequantized values, and write those
+  // back via setWeights. TF.js owns the new tensors after setWeights, so we
+  // never call .dispose() on layer-owned variables.
   for (let li = 0; li < cloned.layers.length; li++) {
     const layer = cloned.layers[li];
     const weights = layer.getWeights();
@@ -61,23 +65,29 @@ export async function quantizeINT8(model: tf.LayersModel): Promise<QuantizedMode
 
     const newWeights: tf.Tensor[] = [];
     for (const w of weights) {
-      const qt = quantizeTensor(w);
-      totalInt8Bytes += qt.int8.length;        // 1 byte per weight
-      totalInt8Bytes += 4;                      // plus 4-byte scale per tensor
+      // Read FP32 values (synchronously copies to a JS-side Float32Array)
+      const raw = w.dataSync() as Float32Array;
+      const shape = w.shape.slice();
 
-      const dq = dequantizeTensor(qt);
-      newWeights.push(dq);
-      w.dispose();
+      const qt = quantizeFloats(raw, shape);
+      totalInt8Bytes += qt.int8.length;     // 1 byte per weight
+      totalInt8Bytes += 4;                   // plus 4-byte scale per tensor
+
+      // Build a fresh FP32 tensor holding the dequantized values
+      const dequantizedFloats = dequantizeToFloats(qt);
+      newWeights.push(tf.tensor(dequantizedFloats, shape));
     }
+    // setWeights internally copies values into the layer's variables.
+    // The temporary tensors we built can then be safely disposed.
     layer.setWeights(newWeights);
-    newWeights.forEach(w => w.dispose());      // setWeights copies, we can drop
+    newWeights.forEach(t => t.dispose());
   }
 
   return {
     precision: "int8",
     predict: (input: tf.Tensor) => cloned.predict(input) as tf.Tensor,
     totalBytes: totalInt8Bytes,
-    compressionRatio: 4.0,                     // approximate; ignores per-tensor scales
+    compressionRatio: 4.0,                  // approximate; ignores per-tensor scales
   };
 }
 
