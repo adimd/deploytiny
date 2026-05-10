@@ -25,6 +25,40 @@
 .ic-left-title { font-size: 1.45rem; font-weight: 700; color: #111; margin-bottom: .3rem; }
 .ic-left-sub { font-size: 1.05rem; color: #aaa; }
 
+/* ── Header action group: Download + Train ── */
+.ic-header-actions {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  flex-shrink: 0;
+}
+
+.ic-download-btn {
+  padding: .75rem 1.2rem;
+  background: #fff;
+  color: #555;
+  border: 1.5px solid #E8E8E8;
+  border-radius: 8px;
+  font-size: .95rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font);
+  white-space: nowrap;
+  transition: border-color .15s, color .15s, background .15s;
+}
+
+.ic-download-btn:hover:not(:disabled) {
+  border-color: #FECACA;
+  color: #C0392B;
+  background: #FEF2F2;
+}
+
+.ic-download-btn:disabled {
+  color: #ccc;
+  cursor: not-allowed;
+  background: #FAFAFA;
+}
+
 .ic-train-btn {
   padding: .75rem 1.6rem;
   background: #C0392B;
@@ -454,4 +488,6 @@
   .ic-layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
   .ic-cam-wrap { aspect-ratio: 4/3; width: 100%; }
   .ic-right { border-left: none; border-bottom: 1px solid #EBEBEB; }
+  .ic-header-actions { flex-direction: column; align-items: stretch; gap: .5rem; }
+  .ic-download-btn, .ic-train-btn { width: 100%; }
 }

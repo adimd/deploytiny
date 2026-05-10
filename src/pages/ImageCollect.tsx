@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import JSZip from "jszip";
 import "../App.css";
 import "./ImageCollect.css";
 
@@ -12,6 +13,33 @@ interface ClassData {
   id: number;
   name: string;
   samples: string[];
+}
+
+// ── Helpers for dataset download ──
+
+function sanitizeClassName(name: string, index: number): string {
+  const cleaned = name
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9_-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return cleaned || `class-${index + 1}`;
+}
+
+function dataUrlToBlob(dataUrl: string): Blob {
+  const [header, base64] = dataUrl.split(",");
+  const mime = header.match(/:(.*?);/)?.[1] || "image/jpeg";
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
+function dateStamp(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 export default function ImageCollect() {
@@ -30,6 +58,7 @@ export default function ImageCollect() {
   const [camReady, setCamReady] = useState(false);
   const [camError, setCamError] = useState(false);
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     startCamera();
@@ -150,6 +179,63 @@ export default function ImageCollect() {
     setNextId(n => n + 1);
   };
 
+  const handleDownload = async () => {
+    if (totalSamples === 0 || downloading) return;
+    setDownloading(true);
+    try {
+      const zip = new JSZip();
+
+      // dedupe sanitized folder names
+      const folderNames: string[] = [];
+      const seen = new Map<string, number>();
+      classes.forEach((cls, i) => {
+        const base = sanitizeClassName(cls.name, i);
+        const count = seen.get(base) || 0;
+        const folder = count === 0 ? base : `${base}-${count + 1}`;
+        seen.set(base, count + 1);
+        folderNames.push(folder);
+      });
+
+      // write images
+      classes.forEach((cls, ci) => {
+        const folder = zip.folder(folderNames[ci])!;
+        cls.samples.forEach((dataUrl, si) => {
+          const blob = dataUrlToBlob(dataUrl);
+          const filename = `${String(si + 1).padStart(4, "0")}.jpg`;
+          folder.file(filename, blob);
+        });
+      });
+
+      // manifest
+      const manifest = {
+        version: "1.0",
+        type: "image",
+        createdAt: new Date().toISOString(),
+        source: "deploytiny.com",
+        classes: classes.map((cls, ci) => ({
+          name: cls.name,
+          folder: folderNames[ci],
+          count: cls.samples.length,
+        })),
+      };
+      zip.file("manifest.json", JSON.stringify(manifest, null, 2));
+
+      const blob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `deploytiny-images-${dateStamp()}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Download failed:", err);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   const totalSamples = classes.reduce((a, c) => a + c.samples.length, 0);
   const totalBudget = classes.length * MAX_SAMPLES;
   const budgetPct = Math.round((totalSamples / totalBudget) * 100) || 0;
@@ -194,13 +280,23 @@ export default function ImageCollect() {
                 Each class needs at least {MIN_SAMPLES} samples. Mix webcam and uploads freely.
               </div>
             </div>
-            <button
-              className="ic-train-btn"
-              disabled={!canTrain}
-              onClick={() => navigate("/get-started/image/train", { state: { classes } })}
-            >
-              Train model
-            </button>
+            <div className="ic-header-actions">
+              <button
+                className="ic-download-btn"
+                disabled={totalSamples === 0 || downloading}
+                onClick={handleDownload}
+                title="Download all samples as a ZIP"
+              >
+                {downloading ? "Preparing..." : "↓ Download dataset"}
+              </button>
+              <button
+                className="ic-train-btn"
+                disabled={!canTrain}
+                onClick={() => navigate("/get-started/image/train", { state: { classes } })}
+              >
+                Train model
+              </button>
+            </div>
           </div>
 
           <div className="ic-classes">
