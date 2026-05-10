@@ -1111,7 +1111,7 @@ normalized to [0, 1] — no separate feature extractor needed.
                     ↻ Retrain
                   </button>
                 ) : (
-                  <button className="tr-btn-red" disabled={status !== "ready"} onClick={startTraining}>
+                  <button className="tr-btn-red" disabled={status !== "ready"} onClick={() => startTraining()}>
                     {status === "loading" ? "Loading..." : status === "training" ? "Training..." : "Train model"}
                   </button>
                 )}
@@ -1439,7 +1439,7 @@ normalized to [0, 1] — no separate feature extractor needed.
               </button>
             </>
           ) : (
-            <button className="tr-btn-red" disabled={status !== "ready"} onClick={startTraining}>
+            <button className="tr-btn-red" disabled={status !== "ready"} onClick={() => startTraining()}>
               {status === "loading" ? "Loading..." : status === "training" ? "Training..." : "Train model"}
             </button>
           )}
