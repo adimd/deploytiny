@@ -662,7 +662,8 @@ function SimpleNav({ navigate }: { navigate: (to: string) => void }) {
       <div className="nav-r">
         <span className="nav-step done">1. Collect</span>
         <span className="nav-step done">2. Train</span>
-        <span className="nav-step active">3. Deploy</span>
+        <span className="nav-step done">3. Quantize</span>
+        <span className="nav-step active">4. Deploy</span>
       </div>
     </nav>
   );

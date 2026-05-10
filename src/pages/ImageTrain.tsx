@@ -912,7 +912,8 @@ normalized to [0, 1] — no separate feature extractor needed.
         <div className="nav-r">
           <span className="nav-step done">1. Collect</span>
           <span className="nav-step active">2. Train</span>
-          <span className="nav-step">3. Deploy</span>
+          <span className="nav-step">3. Quantize</span>
+          <span className="nav-step">4. Deploy</span>
         </div>
       </nav>
 
@@ -1481,8 +1482,8 @@ normalized to [0, 1] — no separate feature extractor needed.
               >
                 {downloadingModel ? "Preparing..." : "↓ Download model"}
               </button>
-              <button className="tr-btn-red" onClick={() => { stopInference(); navigate("/get-started/image/deploy", { state: { classes, model: "trained" } }); }}>
-                Deploy →
+              <button className="tr-btn-red" onClick={() => { stopInference(); navigate("/get-started/image/quantize"); }}>
+                Quantize →
               </button>
             </>
           ) : (
