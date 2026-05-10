@@ -32,6 +32,7 @@ interface SavedMeta {
   cnnInputSize?: number;
   cnnBlocks?: number;
   cnnBaseFilters?: number;
+  cnnColor?: boolean;
   classCount: number;
   classes: SavedClass[];
   accuracy: number | null;
@@ -164,8 +165,9 @@ export default function ImageQuantize() {
         out.push({ input: emb, expectedClass: s.classIndex });
       }
     } else {
-      // Small CNN — preprocess to grayscale at training input size
+      // Small CNN — preprocess at training input size, color or grayscale
       const size = m.cnnInputSize ?? 96;
+      const color = m.cnnColor ?? false;
       for (const s of m.samples) {
         const img = await loadImg(s.dataUrl);
         const canvas = document.createElement("canvas");
@@ -174,6 +176,9 @@ export default function ImageQuantize() {
         ctx.drawImage(img, 0, 0, size, size);
         const t = tf.tidy(() => {
           const px = tf.browser.fromPixels(canvas);
+          if (color) {
+            return px.div(tf.scalar(255)) as tf.Tensor3D;
+          }
           const gray = px.mean(2, true) as tf.Tensor3D;
           return gray.div(tf.scalar(255)) as tf.Tensor3D;
         });
@@ -245,12 +250,16 @@ export default function ImageQuantize() {
       });
     } else {
       const size = meta.cnnInputSize ?? 96;
+      const color = meta.cnnColor ?? false;
       const canvas = document.createElement("canvas");
       canvas.width = size; canvas.height = size;
       const ctx = canvas.getContext("2d")!;
       ctx.drawImage(img, 0, 0, size, size);
       return tf.tidy(() => {
         const px = tf.browser.fromPixels(canvas);
+        if (color) {
+          return px.div(tf.scalar(255)) as tf.Tensor3D;
+        }
         const gray = px.mean(2, true) as tf.Tensor3D;
         return gray.div(tf.scalar(255)) as tf.Tensor3D;
       });

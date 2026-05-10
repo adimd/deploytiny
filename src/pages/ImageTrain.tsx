@@ -21,8 +21,8 @@ const TRANSFER_MODELS = [
     id: "mobilenet-v1",
     name: "MobileNet V1",
     sub: "Uses a pre-trained feature extractor",
-    tag: "Recommended",
-    tagClass: "tag-green",
+    tag: "Fast prototyping",
+    tagClass: "tag-blue",
     embSize: 1024,
     paramsLabel: "3.2M",
     sizeKB: 13000,
@@ -33,7 +33,7 @@ const TRANSFER_MODELS = [
     id: "mobilenet-v2",
     name: "MobileNet V2",
     sub: "Uses a pre-trained feature extractor",
-    tag: "Higher accuracy",
+    tag: "Highest accuracy",
     tagClass: "tag-blue",
     embSize: 1280,
     paramsLabel: "3.5M",
@@ -47,8 +47,8 @@ const SCRATCH_MODEL = {
   id: "small-cnn",
   name: "Small CNN",
   sub: "Trains the entire model on your data",
-  tag: "From scratch",
-  tagClass: "tag-orange",
+  tag: "Recommended",
+  tagClass: "tag-green",
   quantNote: "Full pipeline quantization. INT4, ternary, and binary precisions are on the roadmap.",
 };
 
@@ -66,13 +66,13 @@ const WIDTH_OPTIONS = [
 ];
 
 // Computes layer-by-layer shapes/params for a small CNN given knob settings
-function describeSmallCNN(inputSize: number, blocks: number, baseFilters: number, classCount: number) {
+function describeSmallCNN(inputSize: number, blocks: number, baseFilters: number, classCount: number, channels: number = 1) {
   const layers: { name: string; type: string; shape: string; params: number; }[] = [];
   let h = inputSize, w = inputSize;
-  let inCh = 1;
+  let inCh = channels;
   let totalParams = 0;
 
-  layers.push({ name: "Input", type: "input", shape: `${h}×${w}×1`, params: 0 });
+  layers.push({ name: "Input", type: "input", shape: `${h}×${w}×${channels}`, params: 0 });
 
   for (let i = 0; i < blocks; i++) {
     const outCh = baseFilters * Math.pow(2, Math.min(i, 3));
@@ -161,8 +161,9 @@ export default function ImageTrain() {
   // Model refs
   const trainedModel = useRef<tf.LayersModel|null>(null);
   const mnetRef      = useRef<mobilenet.MobileNet|null>(null);
-  const trainModeRef = useRef<TrainMode>("transfer");
+  const trainModeRef = useRef<TrainMode>("scratch");
   const cnnInputSizeRef = useRef<number>(96);
+  const cnnColorRef     = useRef<boolean>(false);
 
   // Status
   const [status,        setStatus]        = useState<Status>("ready");
@@ -192,13 +193,14 @@ export default function ImageTrain() {
   const [settingsDirty, setSettingsDirty]   = useState(false);
 
   // Mode + model selection
-  const [trainMode,    setTrainMode]    = useState<TrainMode>("transfer");
+  const [trainMode,    setTrainMode]    = useState<TrainMode>("scratch");
   const [selectedTransferModel, setSelectedTransferModel] = useState("mobilenet-v1");
 
   // Small CNN knobs
   const [cnnInputIdx, setCnnInputIdx] = useState(1);   // default 96×96
   const [cnnDepthIdx, setCnnDepthIdx] = useState(1);   // default Medium
   const [cnnWidthIdx, setCnnWidthIdx] = useState(1);   // default Medium
+  const [cnnColor,    setCnnColor]    = useState(false); // default grayscale
 
   // Training hyperparams
   const [lr,         setLr]         = useState(3);
@@ -215,7 +217,7 @@ export default function ImageTrain() {
   const cnnInputSize = INPUT_SIZES[cnnInputIdx];
   const cnnDepth = DEPTH_OPTIONS[cnnDepthIdx];
   const cnnWidth = WIDTH_OPTIONS[cnnWidthIdx];
-  const cnnDescription = describeSmallCNN(cnnInputSize, cnnDepth.blocks, cnnWidth.base, classes.length || 2);
+  const cnnDescription = describeSmallCNN(cnnInputSize, cnnDepth.blocks, cnnWidth.base, classes.length || 2, cnnColor ? 3 : 1);
 
   // Effects
   useEffect(()=>{ if(!state?.classes) navigate("/get-started/image"); /* eslint-disable-next-line */ },[]);
@@ -223,7 +225,7 @@ export default function ImageTrain() {
   useEffect(()=>{ if(weights&&showWeights) setTimeout(()=>drawHeatmap(weights),50); /* eslint-disable-next-line */ },[weights,showWeights]);
   useEffect(()=>()=>{ stopInference(); /* eslint-disable-next-line */ },[]);
 
-  // Live preview of grayscale input for Small CNN mode
+  // Live preview of input for Small CNN mode (color or grayscale)
   useEffect(() => {
     if (trainMode !== "scratch") return;
     const sample = classes[0]?.samples[0];
@@ -238,16 +240,19 @@ export default function ImageTrain() {
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
       ctx.drawImage(img, 0, 0, size, size);
-      const imageData = ctx.getImageData(0, 0, size, size);
-      const data = imageData.data;
-      for (let i = 0; i < data.length; i += 4) {
-        const gray = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
-        data[i] = data[i+1] = data[i+2] = gray;
+      if (!cnnColor) {
+        // Convert to grayscale visual
+        const imageData = ctx.getImageData(0, 0, size, size);
+        const data = imageData.data;
+        for (let i = 0; i < data.length; i += 4) {
+          const gray = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
+          data[i] = data[i+1] = data[i+2] = gray;
+        }
+        ctx.putImageData(imageData, 0, 0);
       }
-      ctx.putImageData(imageData, 0, 0);
     };
     img.src = sample;
-  }, [trainMode, cnnInputIdx, classes]);
+  }, [trainMode, cnnInputIdx, cnnColor, classes]);
 
   // ── Image loading + feature extraction (transfer learning path) ──
   const loadImg = (src: string): Promise<HTMLImageElement> =>
@@ -267,7 +272,7 @@ export default function ImageTrain() {
   };
 
   // ── Image preprocessing for Small CNN path ──
-  const preprocessForCNN = async (imgSrc: string, size: number): Promise<tf.Tensor3D> => {
+  const preprocessForCNN = async (imgSrc: string, size: number, color: boolean = false): Promise<tf.Tensor3D> => {
     const img    = await loadImg(imgSrc);
     const canvas = canvasRef.current!;
     const ctx    = canvas.getContext("2d")!;
@@ -275,16 +280,20 @@ export default function ImageTrain() {
     ctx.drawImage(img, 0, 0, size, size);
     return tf.tidy(() => {
       const px = tf.browser.fromPixels(canvas);                      // [size, size, 3]
+      if (color) {
+        // Keep RGB channels, just normalize
+        return px.div(tf.scalar(255)) as tf.Tensor3D;                // [size, size, 3]
+      }
       const gray = px.mean(2, true) as tf.Tensor3D;                  // [size, size, 1]
-      const norm = gray.div(tf.scalar(255)) as tf.Tensor3D;          // normalize to [0, 1]
+      const norm = gray.div(tf.scalar(255)) as tf.Tensor3D;
       return norm;
     });
   };
 
   // ── Build a Small CNN model from knobs ──
-  const buildSmallCNN = (inputSize: number, blocks: number, baseFilters: number, classCount: number, dropout: number): tf.LayersModel => {
+  const buildSmallCNN = (inputSize: number, blocks: number, baseFilters: number, classCount: number, dropout: number, channels: number = 1): tf.LayersModel => {
     const model = tf.sequential();
-    model.add(tf.layers.inputLayer({ inputShape: [inputSize, inputSize, 1] }));
+    model.add(tf.layers.inputLayer({ inputShape: [inputSize, inputSize, channels] }));
     for (let i = 0; i < blocks; i++) {
       const filters = baseFilters * Math.pow(2, Math.min(i, 3));
       model.add(tf.layers.conv2d({
@@ -391,15 +400,16 @@ export default function ImageTrain() {
         // ── Small CNN from scratch path ──
         setStatus("training");
         setProgressLabel("Preparing images...");
-        setProgressSub(`Resizing to ${cnnInputSize}×${cnnInputSize} grayscale`);
+        setProgressSub(`Resizing to ${cnnInputSize}×${cnnInputSize} ${cnnColor ? "color" : "grayscale"}`);
 
         cnnInputSizeRef.current = cnnInputSize;
+        cnnColorRef.current     = cnnColor;
 
         const tensors: tf.Tensor3D[] = [];
         const labels: number[] = [];
         for (let ci = 0; ci < classes.length; ci++) {
           for (const sample of classes[ci].samples) {
-            tensors.push(await preprocessForCNN(sample, cnnInputSize));
+            tensors.push(await preprocessForCNN(sample, cnnInputSize, cnnColor));
             labels.push(ci);
           }
         }
@@ -409,7 +419,7 @@ export default function ImageTrain() {
         tensors.forEach(t => t.dispose());
 
         const dr = drValues[dropoutIdx];
-        model = buildSmallCNN(cnnInputSize, cnnDepth.blocks, cnnWidth.base, classes.length, dr);
+        model = buildSmallCNN(cnnInputSize, cnnDepth.blocks, cnnWidth.base, classes.length, dr, cnnColor ? 3 : 1);
       }
 
       model.compile({
@@ -491,6 +501,7 @@ export default function ImageTrain() {
             cnnInputSize: cnnInputSize,
             cnnBlocks:    cnnDepth.blocks,
             cnnBaseFilters: cnnWidth.base,
+            cnnColor:     cnnColor,
           }),
           classCount: classes.length,
           classes: classes.map((c, i) => ({ index: i, name: c.name })),
@@ -529,7 +540,7 @@ export default function ImageTrain() {
           inputTensor = emb.expandDims(0);
           emb.dispose();
         } else {
-          const img = await preprocessForCNN(sample, cnnInputSizeRef.current);
+          const img = await preprocessForCNN(sample, cnnInputSizeRef.current, cnnColorRef.current);
           inputTensor = img.expandDims(0);
           img.dispose();
         }
@@ -600,6 +611,9 @@ export default function ImageTrain() {
 
             inputTensor = tf.tidy(() => {
               const px = tf.browser.fromPixels(canvas);
+              if (cnnColorRef.current) {
+                return (px.div(tf.scalar(255)) as tf.Tensor3D).expandDims(0);
+              }
               const gray = px.mean(2, true) as tf.Tensor3D;
               const norm = gray.div(tf.scalar(255)) as tf.Tensor3D;
               return norm.expandDims(0);
@@ -704,6 +718,7 @@ export default function ImageTrain() {
         meta.cnnWidth      = cnnWidth.id;
         meta.cnnBlocks     = cnnDepth.blocks;
         meta.cnnBaseFilters = cnnWidth.base;
+        meta.cnnColor      = cnnColor;
       }
       zip.file("metadata.json", JSON.stringify(meta, null, 2));
 
@@ -733,7 +748,7 @@ You also need to run images through ${currentTransfer.name} first to produce tho
 Trained as a **Small CNN from scratch** on deploytiny.com.
 
 ## Architecture
-- Input: ${cnnInputSize}×${cnnInputSize} grayscale
+- Input: ${cnnInputSize}×${cnnInputSize} ${cnnColor ? "color (RGB)" : "grayscale"}
 - Conv blocks: ${cnnDepth.blocks} (${cnnWidth.label} width, base filters ${cnnWidth.base})
 - Output: ${classes.length} classes
 
@@ -749,7 +764,7 @@ import * as tf from "@tensorflow/tfjs";
 const model = await tf.loadLayersModel("model.json");
 \`\`\`
 
-This is an end-to-end model. Pass it ${cnnInputSize}×${cnnInputSize} grayscale images
+This is an end-to-end model. Pass it ${cnnInputSize}×${cnnInputSize} ${cnnColor ? "RGB color" : "grayscale"} images
 normalized to [0, 1] — no separate feature extractor needed.
 `;
       zip.file("README.md", readme);
@@ -940,6 +955,26 @@ normalized to [0, 1] — no separate feature extractor needed.
           </div>
 
           <div className="tr-models-grid">
+            <div
+              className={`tr-model-card ${trainMode === "scratch" ? "selected" : ""}`}
+              onClick={() => { setTrainMode("scratch"); markDirtyIfDone(); }}
+            >
+              <div className="tr-model-card-head">
+                <span className="tr-model-card-name">{SCRATCH_MODEL.name}</span>
+                <span className={`tr-model-tag ${SCRATCH_MODEL.tagClass}`}>{SCRATCH_MODEL.tag}</span>
+              </div>
+              <div className="tr-model-card-sub">{SCRATCH_MODEL.sub}</div>
+              <div className="tr-model-card-stats">
+                <span>{cnnDescription.totalParams.toLocaleString()} params</span>
+                <span>·</span>
+                <span>{cnnInputSize}×{cnnInputSize} {cnnColor ? "color" : "grayscale"}</span>
+              </div>
+              <div className="tr-model-card-note tr-model-card-note--scratch">
+                <span className="tr-model-card-note-icon">ⓘ</span>
+                {SCRATCH_MODEL.quantNote}
+              </div>
+            </div>
+
             {TRANSFER_MODELS.map(m => {
               const sel = trainMode === "transfer" && selectedTransferModel === m.id;
               return (
@@ -965,26 +1000,6 @@ normalized to [0, 1] — no separate feature extractor needed.
                 </div>
               );
             })}
-
-            <div
-              className={`tr-model-card ${trainMode === "scratch" ? "selected" : ""}`}
-              onClick={() => { setTrainMode("scratch"); markDirtyIfDone(); }}
-            >
-              <div className="tr-model-card-head">
-                <span className="tr-model-card-name">{SCRATCH_MODEL.name}</span>
-                <span className={`tr-model-tag ${SCRATCH_MODEL.tagClass}`}>{SCRATCH_MODEL.tag}</span>
-              </div>
-              <div className="tr-model-card-sub">{SCRATCH_MODEL.sub}</div>
-              <div className="tr-model-card-stats">
-                <span>{cnnDescription.totalParams.toLocaleString()} params</span>
-                <span>·</span>
-                <span>{cnnInputSize}×{cnnInputSize} grayscale</span>
-              </div>
-              <div className="tr-model-card-note tr-model-card-note--scratch">
-                <span className="tr-model-card-note-icon">ⓘ</span>
-                {SCRATCH_MODEL.quantNote}
-              </div>
-            </div>
           </div>
 
           {/* ── Small CNN knobs ── */}
@@ -1012,7 +1027,7 @@ normalized to [0, 1] — no separate feature extractor needed.
                   <div className="tr-knob-help">
                     Larger images keep more detail. Smaller images train faster and use less memory.
                   </div>
-                  <div className="tr-knob-desc">grayscale · {cnnInputSize * cnnInputSize} pixels</div>
+                  <div className="tr-knob-desc">{cnnColor ? "color" : "grayscale"} · {cnnInputSize * cnnInputSize} pixels</div>
                 </div>
 
                 <div>
@@ -1053,10 +1068,32 @@ normalized to [0, 1] — no separate feature extractor needed.
                   <div className="tr-knob-desc">{cnnWidth.base} filters per block</div>
                 </div>
 
+                <div>
+                  <div className="tr-knob-label">Color</div>
+                  <div className="tr-knob-options">
+                    <button
+                      className={`tr-knob-opt ${!cnnColor ? "selected" : ""}`}
+                      onClick={() => { setCnnColor(false); markDirtyIfDone(); }}
+                    >
+                      Grayscale
+                    </button>
+                    <button
+                      className={`tr-knob-opt ${cnnColor ? "selected" : ""}`}
+                      onClick={() => { setCnnColor(true); markDirtyIfDone(); }}
+                    >
+                      Color
+                    </button>
+                  </div>
+                  <div className="tr-knob-help">
+                    Color helps when hue matters. Grayscale uses 3× less memory.
+                  </div>
+                  <div className="tr-knob-desc">{cnnColor ? "3 channels (RGB)" : "1 channel"}</div>
+                </div>
+
                 <div className="tr-cnn-preview">
                   <div className="tr-knob-label">What the model sees</div>
                   <canvas ref={previewRef} className="tr-preview-canvas"/>
-                  <div className="tr-knob-desc">{classes[0]?.name || "first sample"} · {cnnInputSize}×{cnnInputSize}</div>
+                  <div className="tr-knob-desc">{classes[0]?.name || "first sample"} · {cnnInputSize}×{cnnInputSize} {cnnColor ? "color" : "gray"}</div>
                 </div>
               </div>
 
@@ -1176,7 +1213,7 @@ normalized to [0, 1] — no separate feature extractor needed.
                     <p>
                       {trainMode === "transfer"
                         ? `Will use ${currentTransfer.name} as a feature extractor and train a classifier on top.`
-                        : `Will train a small CNN from scratch on ${cnnInputSize}×${cnnInputSize} grayscale images.`}
+                        : `Will train a small CNN from scratch on ${cnnInputSize}×${cnnInputSize} ${cnnColor ? "color" : "grayscale"} images.`}
                     </p>
                   </>
                 )}

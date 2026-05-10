@@ -41,7 +41,7 @@
 .tr-cnn-knobs-title { font-size: .92rem; font-weight: 700; color: #111; margin-bottom: .2rem; }
 .tr-cnn-knobs-sub { font-size: .78rem; color: #aaa; }
 
-.tr-cnn-knobs-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 140px; gap: 1rem; align-items: start; margin-bottom: 1rem; }
+.tr-cnn-knobs-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 140px; gap: 1rem; align-items: start; margin-bottom: 1rem; }
 
 .tr-knob-label { font-size: .75rem; font-weight: 700; color: #555; text-transform: uppercase; letter-spacing: .06em; font-family: var(--mono); margin-bottom: .5rem; }
 .tr-knob-options { display: flex; gap: .35rem; flex-wrap: wrap; }
