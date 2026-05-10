@@ -87,12 +87,41 @@
 .tr-explain-val { font-size: .8rem; color: #666; line-height: 1.6; }
 
 /* ── Ready to train ── */
-.tr-ready-card { background: #fff; border: 1.5px solid #EBEBEB; border-radius: 14px; overflow: hidden; }
+.tr-ready-card { background: #fff; border: 1.5px solid #EBEBEB; border-radius: 14px; overflow: hidden; transition: border-color .25s, background .25s; }
+.tr-ready-card--done { border-color: #BBF7D0; background: #FAFFFA; }
 .tr-ready-body { padding: 1.5rem; }
 .tr-ready-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-.tr-ready-info h3 { font-size: 1.05rem; font-weight: 700; color: #111; margin-bottom: .3rem; }
+.tr-ready-info { flex: 1; }
+.tr-ready-info h3 { font-size: 1.05rem; font-weight: 700; color: #111; margin-bottom: .3rem; display: flex; align-items: center; gap: .4rem; }
 .tr-ready-info p { font-size: .88rem; color: #888; line-height: 1.6; }
 .tr-ready-actions { display: flex; align-items: center; gap: .75rem; flex-shrink: 0; }
+
+.tr-ready-check {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: #16A34A; color: #fff;
+  font-size: .8rem; font-weight: 800;
+}
+
+.tr-trained-summary {
+  display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+  font-size: .88rem; color: #555; line-height: 1.7;
+}
+.tr-trained-summary strong { color: #16A34A; font-weight: 700; }
+.tr-trained-pill {
+  font-family: var(--mono); font-size: .76rem; font-weight: 600;
+  padding: .18rem .55rem; border-radius: 5px;
+  background: #F0FDF4; color: #16A34A; border: 1px solid #BBF7D0;
+}
+.tr-trained-sep { color: #ddd; }
+
+.tr-inline-dirty {
+  display: inline-flex; align-items: center; gap: .45rem;
+  margin-top: .65rem; font-size: .8rem; color: #92400E;
+  font-family: var(--mono);
+  background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 6px;
+  padding: .35rem .65rem;
+}
 
 .tr-btn-text { background: none; border: none; font-size: .88rem; color: #aaa; cursor: pointer; font-family: var(--font); display: flex; align-items: center; gap: .3rem; padding: .4rem 0; transition: color .15s; white-space: nowrap; }
 .tr-btn-text:hover { color: #C0392B; }
@@ -280,29 +309,16 @@ input[type=range] { width: 100%; accent-color: #C0392B; cursor: pointer; }
 .tr-conf-dot { width: 7px; height: 7px; background: #16A34A; border-radius: 50%; animation: tr-pulse .8s infinite; }
 @keyframes tr-pulse { 0%,100%{opacity:1}50%{opacity:.3} }
 
-/* ── Settings-changed hint + attention retrain button ── */
-.tr-dirty-hint {
-  display: flex; align-items: center; gap: .5rem;
-  background: #FFFBEB; border: 1.5px solid #FDE68A; border-radius: 10px;
-  padding: .65rem .9rem; font-size: .82rem; color: #92400E;
-  font-family: var(--mono); align-self: flex-end;
-}
+/* ── Attention treatment for the Retrain button when settings are dirty ── */
 .tr-dirty-dot {
   width: 8px; height: 8px; border-radius: 50%; background: #D97706;
-  animation: tr-pulse 1.2s infinite;
+  animation: tr-pulse 1.2s infinite; flex-shrink: 0;
 }
 .tr-btn-attention {
-  border-color: #D97706 !important;
-  color: #D97706 !important;
-  background: #FFFBEB !important;
   animation: tr-attention 1.5s ease-in-out infinite;
 }
-.tr-btn-attention:hover {
-  background: #FEF3C7 !important;
-  border-color: #B45309 !important;
-}
 @keyframes tr-attention {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(217,119,6,.3); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(217,119,6,.45); }
   50%      { box-shadow: 0 0 0 6px rgba(217,119,6,0); }
 }
 

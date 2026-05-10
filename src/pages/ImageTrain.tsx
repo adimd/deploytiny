@@ -1058,25 +1058,62 @@ normalized to [0, 1] — no separate feature extractor needed.
           )}
         </div>
 
-        {/* ── Ready to train + Train button ── */}
-        <div className="tr-ready-card">
+        {/* ── Ready to train / Trained card ── */}
+        <div className={`tr-ready-card ${status === "done" ? "tr-ready-card--done" : ""}`}>
           <div className="tr-ready-body">
             <div className="tr-ready-row">
               <div className="tr-ready-info">
-                <h3>Ready to train</h3>
-                <p>
-                  {trainMode === "transfer"
-                    ? `Will use ${currentTransfer.name} as a feature extractor and train a classifier on top.`
-                    : `Will train a small CNN from scratch on ${cnnInputSize}×${cnnInputSize} grayscale images.`}
-                </p>
+                {status === "done" ? (
+                  <>
+                    <h3>
+                      <span className="tr-ready-check">✓</span> Trained
+                    </h3>
+                    <div className="tr-trained-summary">
+                      <span className="tr-trained-pill">{trainMode === "transfer" ? currentTransfer.name : "Small CNN"}</span>
+                      <span className="tr-trained-sep">·</span>
+                      <span><strong>{finalAcc ?? 0}%</strong> accuracy</span>
+                      {trainSeconds !== null && (
+                        <>
+                          <span className="tr-trained-sep">·</span>
+                          <span>trained in {trainSeconds}s</span>
+                        </>
+                      )}
+                    </div>
+                    {settingsDirty && (
+                      <div className="tr-inline-dirty">
+                        <span className="tr-dirty-dot"/>
+                        Settings changed — click Retrain to apply
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <h3>Ready to train</h3>
+                    <p>
+                      {trainMode === "transfer"
+                        ? `Will use ${currentTransfer.name} as a feature extractor and train a classifier on top.`
+                        : `Will train a small CNN from scratch on ${cnnInputSize}×${cnnInputSize} grayscale images.`}
+                    </p>
+                  </>
+                )}
               </div>
               <div className="tr-ready-actions">
                 <button className={`tr-btn-text ${showAdvanced?"open":""}`} onClick={() => setShowAdvanced(v=>!v)}>
                   Advanced settings <span className="tr-arrow">▾</span>
                 </button>
-                <button className="tr-btn-red" disabled={status !== "ready"} onClick={startTraining}>
-                  {status === "loading" ? "Loading..." : status === "training" ? "Training..." : "Train model"}
-                </button>
+                {status === "done" ? (
+                  <button
+                    className={`tr-btn-red ${settingsDirty ? "tr-btn-attention" : ""}`}
+                    onClick={handleRetrain}
+                    title="Train again with current settings"
+                  >
+                    ↻ Retrain
+                  </button>
+                ) : (
+                  <button className="tr-btn-red" disabled={status !== "ready"} onClick={startTraining}>
+                    {status === "loading" ? "Loading..." : status === "training" ? "Training..." : "Train model"}
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -1381,15 +1418,7 @@ normalized to [0, 1] — no separate feature extractor needed.
           </>
         )}
 
-        {/* ── Settings-changed hint ── */}
-        {status === "done" && settingsDirty && (
-          <div className="tr-dirty-hint">
-            <span className="tr-dirty-dot"/>
-            Settings changed — click Retrain to apply
-          </div>
-        )}
-
-        {/* ── Actions ── */}
+        {/* ── Actions (navigation + download only) ── */}
         <div className="tr-actions">
           <button className="tr-btn-outline" onClick={() => { stopInference(); navigate("/get-started/image"); }}>
             Back to collect
@@ -1403,13 +1432,6 @@ normalized to [0, 1] — no separate feature extractor needed.
                 title="Download trained model as a zip"
               >
                 {downloadingModel ? "Preparing..." : "↓ Download model"}
-              </button>
-              <button
-                className={`tr-btn-outline ${settingsDirty ? "tr-btn-attention" : ""}`}
-                onClick={handleRetrain}
-                title="Train again with current settings"
-              >
-                ↻ Retrain
               </button>
               <button className="tr-btn-red" onClick={() => { stopInference(); navigate("/get-started/image/deploy", { state: { classes, model: "trained" } }); }}>
                 Deploy →
