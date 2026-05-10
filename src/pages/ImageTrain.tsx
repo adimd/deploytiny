@@ -12,6 +12,9 @@ interface TrainState { classes: ClassData[]; }
 type Status = "ready" | "loading" | "training" | "done" | "error";
 type TrainMode = "transfer" | "scratch";
 
+const DEPLOY_STORAGE_KEY = "deploytiny:current-model-meta";
+const DEPLOY_MODEL_KEY   = "indexeddb://deploytiny-current-model";
+
 // ── Model registry ──
 const TRANSFER_MODELS = [
   {
@@ -456,6 +459,41 @@ export default function ImageTrain() {
 
       setTrainSeconds(Math.round((Date.now() - startTime) / 1000));
       setInferReady(true);
+
+      // Save model + metadata for the Deploy page
+      try {
+        await model.save(DEPLOY_MODEL_KEY);
+
+        let paramCount = 0;
+        for (const layer of model.layers) {
+          for (const w of layer.getWeights()) {
+            paramCount += w.size;
+          }
+        }
+
+        const deployMeta = {
+          trainMode,
+          ...(trainMode === "transfer" ? {
+            transferModel: selectedTransferModel,
+            embeddingSize: currentTransfer.embSize,
+          } : {
+            cnnInputSize: cnnInputSize,
+            cnnBlocks:    cnnDepth.blocks,
+            cnnBaseFilters: cnnWidth.base,
+          }),
+          classCount: classes.length,
+          classes: classes.map((c, i) => ({ index: i, name: c.name })),
+          accuracy: lastAcc,
+          trainAccuracy: lastAcc,
+          valAccuracy:   lastVal,
+          paramCount,
+        };
+        localStorage.setItem(DEPLOY_STORAGE_KEY, JSON.stringify(deployMeta));
+      } catch (saveErr) {
+        console.warn("Failed to save model for deploy:", saveErr);
+        // Non-fatal — user still sees results, just can't deploy this run
+      }
+
       setStatus("done");
       setProgressLabel("Training complete");
       setProgressSub(`Final accuracy: ${lastAcc}%`);
